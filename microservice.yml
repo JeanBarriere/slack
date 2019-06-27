@@ -1,8 +1,48 @@
 omg: 1
+info:
+  version: 0.2.0
+  title: Slack Microservice
+  description: This is a microservice for Slack
 lifecycle:
   startup:
-    command: ["node", "app.js"]
-commands:
+    command: ["python", "app/main.py"]
+
+actions:
+  send:
+    help: |
+      Sends a message to a channel.
+      https://api.slack.com/methods/chat.postMessage
+    arguments:
+      text:
+        type: string
+        in: requestBody
+        required: true
+        help: Text of the message to send.
+      channel:
+        type: string
+        in: requestBody
+        required: true
+        help: |
+          What channel to send message in.
+          This can be a "#channel" "@user" or a channel id.
+      attachments:
+        type: list
+        in: requestBody
+      token: &token
+        in: requestBody
+        type: string
+        help: |
+          Authentication token bearing required scopes.
+          Environment variable BOT_TOKEN used by default.
+    output:
+      contentType: application/json
+      type: map
+    http: &http
+      path: /api/chat.postMessage
+      method: post
+      port: 8000
+      contentType: application/json
+
   bot:
     help: Start a Slack bot
     events:
@@ -16,16 +56,18 @@ commands:
           channel:
             type: string
             in: requestBody
+            required: true
             help: Only listen in a specific channel
-        http:
-          port: 5000
+        http: &pubsub
+          port: 8000
           subscribe:
-            path: /subscribe
             method: post
+            path: /subscribe
             contentType: application/json
           unsubscribe:
             path: /unsubscribe
-            method: delete
+            method: post
+            contentType: application/json
         output: &output
           contentType: application/json
           type: object
@@ -45,37 +87,11 @@ commands:
             ts:
               help: The message timestamp (eg: "1535474523.000100")
               type: string
-          commands:
-            reply:
-              help: Reply to the message
-              arguments:
-                text:
-                  type: string
-                  in: requestBody
-                  required: true
-                  help: Text of the message to send.
-                channel:
-                  type: string
-                  in: requestBody
-                  required: true
-                  help: Channel, private group, or IM channel to send message to.
-                thread_ts:
-                  type: string
-                  in: requestBody
-                  help: Provide another message's `ts` value to make this message a reply. Avoid using a reply's `ts` value; use its parent instead.
-              http:
-                contentType: application/json
-                port: 5000
-                method: post
-                path: /send
 
       responds:
         help: Triggered by direct messages to the bot
         http:
-          contentType: application/json
-          port: 5000
-          method: post
-          path: /subscribe
+          <<: *pubsub
         arguments:
           pattern:
             type: string
@@ -84,27 +100,88 @@ commands:
         output:
           <<: *output
 
-  list_channels:
+  users:
+    http:
+      <<: *http
+      path: /api/users.list
+    arguments:
+      token:
+        <<: *token
+      include_locale:
+        help: |
+          Set this to true to receive the locale for users. Defaults to false
+        type: boolean
+        in: requestBody
+      limit:
+        in: requestBody
+        type: int
+        default: 0
+        help: |
+          The maximum number of items to return. Fewer than the requested number of items may be returned, even if the end of the users list hasn't been reached.
+        range:
+          min: 0
+      cursor:
+        in: requestBody
+        type: string
+        help: |
+          Paginate through collections of data by setting the cursor parameter to a next_cursor attribute returned by a previous request's response_metadata. Default value fetches the first "page" of the collection. See pagination for more detail.
+    output:
+      # TODO add action:next, property:has_more
+      contentType: application/json
+      type: map
+
+  channels:
     help: Get a list of channels
     http:
-      port: 5000
-      method: get
-      path: /channels
+      <<: *http
+      path: /api/channels.list
+    arguments:
+      token:
+        <<: *token
+      limit: &limit
+        type: int
+        default: 100
+        in: requestBody
+        help: Limit the number of channels to return. Must be less than 1000.
+      exclude_archived:
+        type: boolean
+        default: false
+        in: requestBody
+        help: Set to true to exclude archived channels from the list
+      types:
+        type: list
+        in: requestBody
+        help: |
+          Mix and match channel types: public_channel, private_channel, mpim, im
+          Default is public_channel only.
     output:
       contentType: application/json
-      type: list
-      items:
-        type: object
-        properties:
-          id:
-            help: The channel ID
-            type: string
-          name:
-            help: The channel name
-            type: string
+      type: map
+      # items:
+      #   type: object
+      #   properties:
+      #     id:
+      #       help: The channel ID
+      #       type: string
+      #     name:
+      #       help: The channel name
+      #       type: string
+
+  directChannels:
+    help: Lists direct message channels for the calling user.
+    http:
+      <<: *http
+      path: /api/im.list
+    arguments:
+      token:
+        <<: *token
+      limit:
+        <<: *limit
+    output:
+      contentType: application/json
+      type: map
 
 environment:
-  name:
-    help: The name of the bot
-  token:
+  BOT_TOKEN:
+    type: string
     help: The Slack bot token
