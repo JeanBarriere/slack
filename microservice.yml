@@ -85,7 +85,8 @@ actions:
               help: The user ID
               type: string
             ts:
-              help: The message timestamp (eg: "1535474523.000100")
+              help: |
+                The message timestamp (eg: "1535474523.000100")
               type: string
 
       responds:
